@@ -53,6 +53,25 @@ PersistentKeepalive = 25
 	}
 }
 
+// copied straight out of a terminal: the command before, the prompt after
+func TestWireGuardFromTerminal(t *testing.T) {
+	paste := "root@vps:~# WG=wg0; IP=10.8.0.2\nroot@vps:~# cat <<EOF\n> [Interface]\n" +
+		"[Interface]\nPrivateKey = " + k1 + "\nAddress = 10.8.0.2/32\n\n[Peer]\nPublicKey = " + k2 +
+		"\nEndpoint = 77.91.123.91:51820\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = 25\n\nroot@vps:~# \n"
+	p, err := Parse(paste)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Host != "77.91.123.91" || p.WG.Peers[0].Keepalive != 25 {
+		t.Fatalf("got %s %+v", p.Host, p.WG.Peers[0])
+	}
+	// a stray setting inside the config is still an error, with the original line number
+	_, err = Parse("$ x\n[Interface]\nPrivateKey = " + k1 + "\nnot a setting\n[Peer]\n")
+	if err == nil || !strings.Contains(err.Error(), "line 4") {
+		t.Fatalf("want a line-4 error, got %v", err)
+	}
+}
+
 func TestAmneziaWG(t *testing.T) {
 	conf := "[Interface]\nPrivateKey=" + k1 + "\nAddress=10.0.0.2/32\nJc = 4\nJmin=40\nJmax=70\nS1=15\nS2=42\nH1=1\nH2=2\nH3=3\nH4=4\n[Peer]\nPublicKey=" + k2 + "\nEndpoint=1.2.3.4:443\nAllowedIPs=0.0.0.0/0\n"
 	p, err := Parse(conf)

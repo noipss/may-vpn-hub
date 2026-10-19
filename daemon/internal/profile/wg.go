@@ -75,7 +75,9 @@ func parseWG(text string) (*Profile, error) {
 	awg := map[string]string{}
 	section := ""
 	var peer *Peer
-	for n, raw := range strings.Split(text, "\n") {
+	lines, off := fromTerminal(text)
+	for i, raw := range lines {
+		n := i + off
 		line := strings.TrimSpace(raw)
 		if i := strings.IndexAny(line, "#;"); i >= 0 {
 			line = strings.TrimSpace(line[:i])
@@ -159,7 +161,7 @@ func parseWG(text string) (*Profile, error) {
 				p.Ignored = append(p.Ignored, k)
 			}
 		default:
-			return nil, fmt.Errorf("line %d: %s outside of a section", n+1, k)
+			return nil, fmt.Errorf("line %d: %s is outside [Interface] / [Peer] — copy the config from [Interface] to the end", n+1, k)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("line %d (%s): %w", n+1, k, err)
@@ -192,6 +194,33 @@ func parseWG(text string) (*Profile, error) {
 	}
 	p.Host, p.Port = w.Peers[0].Host, w.Peers[0].Port
 	return p, nil
+}
+
+// fromTerminal cuts the config out of whatever was copied around it from a terminal: commands
+// and the prompt before the first [section], a prompt or blank lines after the last setting.
+// It returns the kept lines and the index of the first one (for line numbers in errors).
+func fromTerminal(text string) ([]string, int) {
+	all := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	isSection := func(t string) bool { return strings.HasPrefix(t, "[") && strings.HasSuffix(t, "]") }
+	start := -1
+	for i, l := range all {
+		if isSection(strings.TrimSpace(l)) {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return all, 0
+	}
+	end := len(all)
+	for end > start+1 {
+		t := strings.TrimSpace(all[end-1])
+		if isSection(t) || strings.Contains(t, "=") || (t != "" && (t[0] == '#' || t[0] == ';')) {
+			break
+		}
+		end--
+	}
+	return all[start:end], start
 }
 
 func parsePrefix(s string) (netip.Prefix, error) {
