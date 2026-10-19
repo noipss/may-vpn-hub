@@ -23,6 +23,10 @@ const [W, H] = (arg('size') || '480x800').split('x').map(Number);
 
 app.setName('May VPN');
 
+// one May VPN at a time; the second launch just focuses the first
+if (!demo && !script && !app.requestSingleInstanceLock()) app.exit(0);
+app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+
 // ---------- no traces: Chromium's profile lives in a temp dir that is wiped on exit ----------
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'mayvpn-'));
 for (const k of ['userData', 'sessionData', 'crashDumps', 'logs']) {
@@ -31,6 +35,13 @@ for (const k of ['userData', 'sessionData', 'crashDumps', 'logs']) {
 app.commandLine.appendSwitch('disable-http-cache');
 app.commandLine.appendSwitch('disable-breakpad');
 function wipeScratch() { try { fs.rmSync(scratch, { recursive: true, force: true }); } catch (_) {} }
+// a run that was killed hard could not clean up after itself: sweep its folder now
+if (!demo && !script) {
+  for (const d of fs.readdirSync(os.tmpdir())) {
+    const full = path.join(os.tmpdir(), d);
+    if (d.startsWith('mayvpn-') && full !== scratch) try { fs.rmSync(full, { recursive: true, force: true }); } catch (_) {}
+  }
+}
 process.on('exit', wipeScratch);
 
 const vaultFile = demo ? path.join(scratch, 'vault') : path.join(app.getPath('appData'), 'May VPN', 'vault');
