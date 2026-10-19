@@ -12,11 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
-	"os"
 	"sync"
-	"syscall"
-
-	"golang.org/x/sys/unix"
 
 	"mayvpn/internal/driver"
 	"mayvpn/internal/profile"
@@ -24,9 +20,11 @@ import (
 )
 
 type Server struct {
-	Sess     *session.Session
-	Version  string
-	AllowUID int // the user who installed the helper; -1 = anyone who can open the socket
+	Sess    *session.Session
+	Version string
+	// Owner is who installed the helper: a uid on macOS/Linux (checked per connection), a SID on
+	// Windows (enforced by the pipe's ACL). "" lets anyone who can open the endpoint in.
+	Owner string
 }
 
 type request struct {
@@ -51,24 +49,6 @@ type push struct {
 	Stats  *session.Stats  `json:"stats,omitempty"`
 }
 
-// Listen creates the socket owned by uid with mode 0600 (replacing a stale one).
-func Listen(path string, uid int) (net.Listener, error) {
-	os.Remove(path)
-	old := syscall.Umask(0o177)
-	ln, err := net.Listen("unix", path)
-	syscall.Umask(old)
-	if err != nil {
-		return nil, err
-	}
-	if uid >= 0 && os.Getuid() == 0 {
-		if err := os.Chown(path, uid, 0); err != nil {
-			ln.Close()
-			return nil, err
-		}
-	}
-	return ln, nil
-}
-
 func (s *Server) Serve(ln net.Listener) error {
 	for {
 		c, err := ln.Accept()
@@ -84,27 +64,6 @@ func (s *Server) Serve(ln net.Listener) error {
 		}
 		go s.handle(c)
 	}
-}
-
-func (s *Server) peerOK(c net.Conn) bool {
-	if s.AllowUID < 0 {
-		return true
-	}
-	uc, ok := c.(*net.UnixConn)
-	if !ok {
-		return false
-	}
-	raw, err := uc.SyscallConn()
-	if err != nil {
-		return false
-	}
-	uid := -1
-	raw.Control(func(fd uintptr) {
-		if cred, err := unix.GetsockoptXucred(int(fd), unix.SOL_LOCAL, unix.LOCAL_PEERCRED); err == nil {
-			uid = int(cred.Uid)
-		}
-	})
-	return uid == s.AllowUID || uid == 0
 }
 
 func (s *Server) handle(c net.Conn) {

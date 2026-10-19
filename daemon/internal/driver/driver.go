@@ -1,9 +1,12 @@
-// Package driver assembles a tunnel on macOS: engine + kill switch + addresses + routes + DNS,
-// in an order that never lets traffic slip around the tunnel, with a full rollback on error.
+// Package driver assembles a tunnel: engine + kill switch + addresses + routes + DNS, in an order
+// that never lets traffic slip around the tunnel, with a full rollback on error. The OS-specific
+// parts live in netcfg (macOS pf/scutil, Linux ip/nft/resolved, Windows winipcfg/WFP) and in the
+// tunnel engines (Linux prefers kernel WireGuard).
 package driver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -21,13 +24,14 @@ type Prefs struct {
 
 var FallbackDNS = []netip.Addr{netip.MustParseAddr("1.1.1.1"), netip.MustParseAddr("1.0.0.1")}
 
-type Darwin struct {
+// Driver works on every OS; Run is only used by the command-driven netcfg (macOS, Linux).
+type Driver struct {
 	Run      netcfg.Runner
 	Resolver *net.Resolver
 }
 
 // Resolve picks one address for a host, IPv4 first (most VPS endpoints and every split route).
-func (d *Darwin) Resolve(ctx context.Context, host string) (netip.Addr, error) {
+func (d *Driver) Resolve(ctx context.Context, host string) (netip.Addr, error) {
 	if ip, err := netip.ParseAddr(host); err == nil {
 		return ip, nil
 	}
@@ -48,7 +52,7 @@ func (d *Darwin) Resolve(ctx context.Context, host string) (netip.Addr, error) {
 }
 
 // Start brings the tunnel up. The returned stop func undoes everything.
-func (d *Darwin) Start(ctx context.Context, p *profile.Profile, prefs Prefs) (tunnel.Tunnel, func(), error) {
+func (d *Driver) Start(ctx context.Context, p *profile.Profile, prefs Prefs) (tunnel.Tunnel, func(), error) {
 	if err := ForeignVPN(netcfg.New(d.Run)); err != nil {
 		return nil, nil, err
 	}
@@ -60,7 +64,7 @@ func (d *Darwin) Start(ctx context.Context, p *profile.Profile, prefs Prefs) (tu
 	}
 }
 
-func (d *Darwin) startWG(ctx context.Context, p *profile.Profile, prefs Prefs) (_ tunnel.Tunnel, _ func(), err error) {
+func (d *Driver) startWG(ctx context.Context, p *profile.Profile, prefs Prefs) (_ tunnel.Tunnel, _ func(), err error) {
 	w := p.WG
 	defer w.Wipe()
 	eps := make([]netip.AddrPort, len(w.Peers))
@@ -75,20 +79,23 @@ func (d *Darwin) startWG(ctx context.Context, p *profile.Profile, prefs Prefs) (
 	if mtu == 0 {
 		mtu = 1420
 	}
-	uapi := []byte(tunnel.UAPI(w, eps, p.Kind == profile.AmneziaWG))
 	var t tunnel.Tunnel
-	if p.Kind == profile.AmneziaWG {
-		dev, e := tunnel.CreateAWGUTUN(mtu)
+	switch {
+	case p.Kind == profile.AmneziaWG:
+		dev, e := tunnel.CreateAWGTUN(mtu)
 		if e != nil {
-			return nil, nil, fmt.Errorf("create utun: %w", e)
+			return nil, nil, fmt.Errorf("create tunnel interface: %w", e)
 		}
-		t, err = tunnel.StartAmneziaWG(dev, uapi)
-	} else {
-		dev, e := tunnel.CreateUTUN(mtu)
-		if e != nil {
-			return nil, nil, fmt.Errorf("create utun: %w", e)
+		t, err = tunnel.StartAmneziaWG(dev, []byte(tunnel.UAPI(w, eps, true)))
+	default:
+		// kernel WireGuard where there is one (Linux), wireguard-go everywhere else
+		if t, err = tunnel.StartKernelWG(w, eps); errors.Is(err, tunnel.ErrNoKernel) {
+			dev, e := tunnel.CreateTUN(mtu)
+			if e != nil {
+				return nil, nil, fmt.Errorf("create tunnel interface: %w", e)
+			}
+			t, err = tunnel.StartWireGuard(dev, []byte(tunnel.UAPI(w, eps, false)))
 		}
-		t, err = tunnel.StartWireGuard(dev, uapi)
 	}
 	if err != nil {
 		return nil, nil, err
@@ -101,13 +108,17 @@ func (d *Darwin) startWG(ctx context.Context, p *profile.Profile, prefs Prefs) (
 		}
 	}()
 	name := t.Name()
+	dns := w.DNS
+	if len(dns) == 0 && w.FullTunnel() {
+		dns = FallbackDNS
+	}
 
 	if prefs.KillSwitch {
 		allow := make([]netcfg.Allow, len(eps))
 		for i, e := range eps {
 			allow[i] = netcfg.Allow{Addr: e.Addr(), Port: e.Port(), Proto: "udp"}
 		}
-		if err = nc.KillSwitch(netcfg.PFRules(name, allow, prefs.AllowLAN)); err != nil {
+		if err = nc.KillSwitch(name, allow, prefs.AllowLAN, dns); err != nil {
 			return nil, nil, fmt.Errorf("kill switch: %w", err)
 		}
 	}
@@ -118,7 +129,7 @@ func (d *Darwin) startWG(ctx context.Context, p *profile.Profile, prefs Prefs) (
 		}
 		has6 = has6 || a.Addr().Is6()
 	}
-	if err = nc.Up(name, 0); err != nil {
+	if err = nc.Up(name, mtu); err != nil {
 		return nil, nil, err
 	}
 	// keep the server itself reachable outside the tunnel
@@ -148,16 +159,12 @@ func (d *Darwin) startWG(ctx context.Context, p *profile.Profile, prefs Prefs) (
 		}
 	}
 	if full4 && !has6 {
-		if err = nc.Blackhole(netip.MustParsePrefix("::/0")); err != nil {
+		if err = nc.Blackhole(name, netip.MustParsePrefix("::/0")); err != nil {
 			return nil, nil, err
 		}
 	}
-	dns := w.DNS
-	if len(dns) == 0 && w.FullTunnel() {
-		dns = FallbackDNS
-	}
 	if len(dns) > 0 {
-		if err = nc.OverrideDNS(dns); err != nil {
+		if err = nc.OverrideDNS(name, dns); err != nil {
 			return nil, nil, fmt.Errorf("dns: %w", err)
 		}
 	}
@@ -171,19 +178,11 @@ func ForeignVPN(nc *netcfg.Config) error {
 	if err != nil {
 		return nil // no default route: the resolve / dial step reports that more clearly
 	}
-	if isTunnel(gw.Iface) {
-		return fmt.Errorf("another VPN is on (%s) — turn it off first, May VPN can't run inside it", gw.Iface)
+	if netcfg.IsForeignTunnel(gw) {
+		name, _, _ := strings.Cut(gw.Iface, "|")
+		return fmt.Errorf("another VPN is on (%s) — turn it off first, May VPN can't run inside it", name)
 	}
 	return nil
-}
-
-func isTunnel(iface string) bool {
-	for _, p := range []string{"utun", "ipsec", "ppp", "tun", "tap", "wg"} {
-		if strings.HasPrefix(iface, p) {
-			return true
-		}
-	}
-	return false
 }
 
 func covered(w *profile.WG, ip netip.Addr) bool {
@@ -197,23 +196,12 @@ func covered(w *profile.WG, ip netip.Addr) bool {
 	return false
 }
 
-// freeUTUN picks a high utun number nobody uses, for sing-box (it needs a name up front).
-func freeUTUN() string {
-	for i := 229; i < 260; i++ {
-		n := fmt.Sprintf("utun%d", i)
-		if _, err := net.InterfaceByName(n); err != nil {
-			return n
-		}
-	}
-	return "utun259"
-}
-
-func (d *Darwin) startSing(ctx context.Context, p *profile.Profile, prefs Prefs) (_ tunnel.Tunnel, _ func(), err error) {
+func (d *Driver) startSing(ctx context.Context, p *profile.Profile, prefs Prefs) (_ tunnel.Tunnel, _ func(), err error) {
 	server, err := d.Resolve(ctx, p.Host)
 	if err != nil {
 		return nil, nil, err
 	}
-	name := freeUTUN()
+	name := tunnel.SingTunName()
 	cfg, err := tunnel.SingBoxConfig(p, server, name)
 	if err != nil {
 		return nil, nil, err
@@ -231,16 +219,31 @@ func (d *Darwin) startSing(ctx context.Context, p *profile.Profile, prefs Prefs)
 			stop()
 		}
 	}()
-	if prefs.KillSwitch {
+	dns := []netip.Addr{netip.MustParseAddr(tunnel.SingTunDNS)}
+	killSwitch := func() error {
+		if !prefs.KillSwitch {
+			return nil
+		}
 		allow := []netcfg.Allow{{Addr: server, Port: p.Port, Proto: "both"}}
-		if err = nc.KillSwitch(netcfg.PFRules(name, allow, prefs.AllowLAN)); err != nil {
-			return nil, nil, fmt.Errorf("kill switch: %w", err)
+		if err := nc.KillSwitch(name, allow, prefs.AllowLAN, dns); err != nil {
+			return fmt.Errorf("kill switch: %w", err)
+		}
+		return nil
+	}
+	if !netcfg.KillSwitchAfterTunnel {
+		if err = killSwitch(); err != nil {
+			return nil, nil, err
 		}
 	}
 	if t, err = tunnel.StartSingBox(cfg, name); err != nil {
 		return nil, nil, err
 	}
-	if err = nc.OverrideDNS([]netip.Addr{netip.MustParseAddr(tunnel.SingTunDNS)}); err != nil {
+	if netcfg.KillSwitchAfterTunnel {
+		if err = killSwitch(); err != nil {
+			return nil, nil, err
+		}
+	}
+	if err = nc.OverrideDNS(name, dns); err != nil {
 		return nil, nil, fmt.Errorf("dns: %w", err)
 	}
 	return t, stop, nil

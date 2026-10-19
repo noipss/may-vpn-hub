@@ -1,14 +1,12 @@
-// Package netcfg changes the macOS network around a tunnel: interface addresses, routes,
-// the DNS override (dynamic store, memory only) and the pf kill switch. Every change is
-// recorded in memory and undone in reverse order by Undo. Nothing is written to disk.
+// Package netcfg changes the network around a tunnel: interface addresses, routes, the DNS
+// override and the kill switch. Every change is recorded in memory and undone in reverse order by
+// Undo. Nothing is written to disk. One implementation per OS (netcfg_<os>.go).
 package netcfg
 
 import (
-	"bufio"
 	"fmt"
 	"net/netip"
 	"os/exec"
-	"regexp"
 	"strings"
 	"sync"
 )
@@ -27,16 +25,6 @@ func System(stdin string, name string, args ...string) (string, error) {
 	}
 	return string(out), nil
 }
-
-const (
-	ifconfig  = "/sbin/ifconfig"
-	route     = "/sbin/route"
-	scutil    = "/usr/sbin/scutil"
-	pfctl     = "/sbin/pfctl"
-	PFAnchor  = "com.apple/250.MayVPN"
-	dnsCache1 = "/usr/bin/dscacheutil"
-	killall   = "/usr/bin/killall"
-)
 
 // Config applies changes and remembers how to revert them.
 type Config struct {
@@ -65,34 +53,24 @@ func (c *Config) Undo() {
 	}
 }
 
-// ---------- interface & routes ----------
-
-// Address assigns a tunnel address to a utun (point-to-point, like wg-quick on macOS).
-func (c *Config) Address(iface string, p netip.Prefix) error {
-	var err error
-	if p.Addr().Is4() {
-		_, err = c.Run("", ifconfig, iface, "inet", p.String(), p.Addr().String(), "alias")
-	} else {
-		_, err = c.Run("", ifconfig, iface, "inet6", p.String(), "alias")
-	}
-	return err
+// Gateway is the physical next hop for a family (the split routes leave it in place).
+type Gateway struct {
+	Addr  netip.Addr // invalid when the default route is a link (no next hop)
+	Iface string
+	Index int // interface index (Windows routes by it)
 }
 
-func (c *Config) Up(iface string, mtu int) error {
-	if mtu > 0 {
-		if _, err := c.Run("", ifconfig, iface, "mtu", fmt.Sprint(mtu)); err != nil {
-			return err
-		}
-	}
-	_, err := c.Run("", ifconfig, iface, "up")
-	return err
+type Allow struct {
+	Addr  netip.Addr
+	Port  uint16
+	Proto string // udp | tcp | both
 }
 
-func family(p netip.Prefix) string {
-	if p.Addr().Is4() {
-		return "-inet"
+func (a Allow) protos() []string {
+	if a.Proto == "both" {
+		return []string{"udp", "tcp"}
 	}
-	return "-inet6"
+	return []string{a.Proto}
 }
 
 // split turns a default route into two halves that win over the real default without replacing it.
@@ -106,177 +84,20 @@ func split(p netip.Prefix) []netip.Prefix {
 	return []netip.Prefix{netip.MustParsePrefix("::/1"), netip.MustParsePrefix("8000::/1")}
 }
 
-// RouteVia sends a prefix into the tunnel interface.
-func (c *Config) RouteVia(iface string, p netip.Prefix) error {
-	for _, h := range split(p) {
-		h := h
-		if _, err := c.Run("", route, "-q", "-n", "add", family(h), h.String(), "-interface", iface); err != nil {
-			return err
-		}
-		c.push(func() { c.Run("", route, "-q", "-n", "delete", family(h), h.String(), "-interface", iface) })
-	}
-	return nil
-}
+// tunnelPrefixes are interface names other VPNs use; a default route on one of them means
+// another VPN is running (we refuse to nest: our kill switch would cut its packets).
+var tunnelPrefixes = []string{"utun", "ipsec", "ppp", "tun", "tap", "wg", "nordlynx", "proton", "mullvad"}
 
-// Blackhole drops a whole family (IPv6 when the tunnel has none — no leak around it).
-func (c *Config) Blackhole(p netip.Prefix) error {
-	lo := "127.0.0.1"
-	if !p.Addr().Is4() {
-		lo = "::1"
-	}
-	for _, h := range split(p) {
-		h := h
-		if _, err := c.Run("", route, "-q", "-n", "add", family(h), h.String(), lo, "-blackhole"); err != nil {
-			return err
-		}
-		c.push(func() { c.Run("", route, "-q", "-n", "delete", family(h), h.String(), lo, "-blackhole") })
-	}
-	return nil
-}
-
-type Gateway struct {
-	Addr  netip.Addr // invalid when the default route is a link (no next hop)
-	Iface string
-}
-
-var reGW = regexp.MustCompile(`(?m)^\s*gateway:\s*(\S+)`)
-var reIF = regexp.MustCompile(`(?m)^\s*interface:\s*(\S+)`)
-
-// DefaultGateway is the physical next hop for a family (the split routes leave it in place).
-func (c *Config) DefaultGateway(v6 bool) (Gateway, error) {
-	args := []string{"-n", "get"}
-	if v6 {
-		args = append(args, "-inet6")
-	}
-	out, err := c.Run("", route, append(args, "default")...)
-	if err != nil {
-		return Gateway{}, err
-	}
-	var g Gateway
-	if m := reIF.FindStringSubmatch(out); m != nil {
-		g.Iface = m[1]
-	}
-	if m := reGW.FindStringSubmatch(out); m != nil {
-		g.Addr, _ = netip.ParseAddr(strings.Split(m[1], "%")[0])
-	}
-	if g.Iface == "" {
-		return g, fmt.Errorf("no default route")
-	}
-	return g, nil
-}
-
-// PinHost keeps traffic to the VPN server itself outside the tunnel.
-func (c *Config) PinHost(ip netip.Addr, gw Gateway) error {
-	h := netip.PrefixFrom(ip, ip.BitLen())
-	args := []string{"-q", "-n", "add", family(h), h.String()}
-	del := []string{"-q", "-n", "delete", family(h), h.String()}
-	if gw.Addr.IsValid() {
-		args = append(args, gw.Addr.String())
-	} else {
-		args = append(args, "-interface", gw.Iface)
-	}
-	if _, err := c.Run("", route, args...); err != nil {
-		return err
-	}
-	c.push(func() { c.Run("", route, del...) })
-	return nil
-}
-
-// ---------- DNS (dynamic store: memory only, gone after reboot) ----------
-
-var rePrimary = regexp.MustCompile(`PrimaryService\s*:\s*(\S+)`)
-
-// OverrideDNS points the primary service's resolver at servers and restores the original on Undo.
-func (c *Config) OverrideDNS(servers []netip.Addr) error {
-	out, err := c.Run("show State:/Network/Global/IPv4\n", scutil)
-	if err != nil {
-		return err
-	}
-	m := rePrimary.FindStringSubmatch(out)
-	if m == nil {
-		return fmt.Errorf("no primary network service")
-	}
-	key := "State:/Network/Service/" + m[1] + "/DNS"
-	orig, _ := c.Run("show "+key+"\n", scutil)
-	saved := parseDict(orig)
-
-	addrs := make([]string, len(servers))
-	for i, s := range servers {
-		addrs[i] = s.String()
-	}
-	if _, err := c.Run(setScript(key, map[string][]string{"ServerAddresses": addrs}), scutil); err != nil {
-		return err
-	}
-	c.flushDNS()
-	c.push(func() {
-		if len(saved) == 0 {
-			c.Run("remove "+key+"\n", scutil)
-		} else {
-			c.Run(setScript(key, saved), scutil)
-		}
-		c.flushDNS()
-	})
-	return nil
-}
-
-func (c *Config) flushDNS() {
-	c.Run("", dnsCache1, "-flushcache")
-	c.Run("", killall, "-HUP", "mDNSResponder")
-}
-
-func setScript(key string, d map[string][]string) string {
-	var b strings.Builder
-	b.WriteString("d.init\n")
-	for _, k := range []string{"ServerAddresses", "SearchDomains", "DomainName"} {
-		v, ok := d[k]
-		if !ok || len(v) == 0 {
-			continue
-		}
-		if k == "DomainName" {
-			fmt.Fprintf(&b, "d.add %s %s\n", k, v[0])
-		} else {
-			fmt.Fprintf(&b, "d.add %s * %s\n", k, strings.Join(v, " "))
+func isTunnelName(iface string) bool {
+	for _, p := range tunnelPrefixes {
+		if strings.HasPrefix(strings.ToLower(iface), p) {
+			return true
 		}
 	}
-	fmt.Fprintf(&b, "set %s\n", key)
-	return b.String()
+	return false
 }
 
-// parseDict reads the scutil "show" dump of a DNS dictionary (arrays + DomainName).
-func parseDict(s string) map[string][]string {
-	d := map[string][]string{}
-	if !strings.Contains(s, "<dictionary>") {
-		return d
-	}
-	sc := bufio.NewScanner(strings.NewReader(s))
-	cur := ""
-	for sc.Scan() {
-		l := strings.TrimSpace(sc.Text())
-		switch {
-		case strings.HasSuffix(l, ": <array> {"):
-			cur = strings.TrimSpace(strings.TrimSuffix(l, ": <array> {"))
-		case l == "}":
-			cur = ""
-		case cur != "":
-			if _, v, ok := strings.Cut(l, " : "); ok {
-				d[cur] = append(d[cur], v)
-			}
-		case strings.HasPrefix(l, "DomainName : "):
-			d["DomainName"] = []string{strings.TrimPrefix(l, "DomainName : ")}
-		}
-	}
-	return d
-}
-
-// ---------- kill switch (pf anchor) ----------
-
-type Allow struct {
-	Addr  netip.Addr
-	Port  uint16
-	Proto string // udp | tcp | both
-}
-
-// PFRules: only loopback, the tunnel, the VPN server and DHCP may pass; everything else drops.
+// PFRules (macOS): only loopback, the tunnel, the VPN server and DHCP may pass; everything else drops.
 func PFRules(iface string, allow []Allow, lan bool) string {
 	var b strings.Builder
 	b.WriteString("pass quick on lo0 all no state\n")
@@ -286,11 +107,7 @@ func PFRules(iface string, allow []Allow, lan bool) string {
 		if a.Addr.Is6() {
 			fam = "inet6"
 		}
-		protos := []string{a.Proto}
-		if a.Proto == "both" {
-			protos = []string{"udp", "tcp"}
-		}
-		for _, p := range protos {
+		for _, p := range a.protos() {
 			fmt.Fprintf(&b, "pass out quick %s proto %s to %s port %d\n", fam, p, a.Addr, a.Port)
 		}
 	}
@@ -306,29 +123,42 @@ func PFRules(iface string, allow []Allow, lan bool) string {
 	return b.String()
 }
 
-var reToken = regexp.MustCompile(`Token\s*:\s*(\d+)`)
+// NftTable is ours alone; deleting it removes the whole kill switch.
+const NftTable = "mayvpn"
 
-// KillSwitch loads the anchor and takes a pf enable reference (released on Undo).
-func (c *Config) KillSwitch(rules string) error {
-	if _, err := c.Run(rules, pfctl, "-a", PFAnchor, "-f", "-"); err != nil {
-		return err
+// NftRules (Linux): the same policy as PFRules as one nftables table with drop policies.
+func NftRules(iface string, allow []Allow, lan bool) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "table inet %s {\n", NftTable)
+	b.WriteString("  chain output {\n    type filter hook output priority 0; policy drop;\n")
+	b.WriteString("    oifname \"lo\" accept\n")
+	fmt.Fprintf(&b, "    oifname %q accept\n", iface)
+	for _, a := range allow {
+		fam := "ip"
+		if a.Addr.Is6() {
+			fam = "ip6"
+		}
+		for _, p := range a.protos() {
+			fmt.Fprintf(&b, "    %s daddr %s %s dport %d accept\n", fam, a.Addr, p, a.Port)
+		}
 	}
-	c.push(func() { c.Run("", pfctl, "-a", PFAnchor, "-F", "all") })
-	out, err := c.Run("", pfctl, "-E")
-	if err != nil {
-		return err
+	b.WriteString("    udp sport 68 udp dport 67 accept\n")
+	b.WriteString("    icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } accept\n")
+	if lan {
+		b.WriteString("    ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 224.0.0.0/4 } accept\n")
+		b.WriteString("    ip6 daddr { fe80::/10, ff00::/8, fc00::/7 } accept\n")
 	}
-	if m := reToken.FindStringSubmatch(out); m != nil {
-		tok := m[1]
-		c.push(func() { c.Run("", pfctl, "-X", tok) })
+	b.WriteString("  }\n")
+	b.WriteString("  chain input {\n    type filter hook input priority 0; policy drop;\n")
+	b.WriteString("    iifname \"lo\" accept\n")
+	fmt.Fprintf(&b, "    iifname %q accept\n", iface)
+	b.WriteString("    ct state established,related accept\n")
+	b.WriteString("    udp sport 67 udp dport 68 accept\n")
+	b.WriteString("    icmpv6 type { nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept\n")
+	if lan {
+		b.WriteString("    ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } accept\n")
+		b.WriteString("    ip6 saddr { fe80::/10, fc00::/7 } accept\n")
 	}
-	return nil
-}
-
-// Sweep removes leftovers of a previous run that died without Undo (memory was lost with it).
-func Sweep(run Runner) {
-	if run == nil {
-		run = System
-	}
-	run("", pfctl, "-a", PFAnchor, "-F", "all")
+	b.WriteString("  }\n}\n")
+	return b.String()
 }

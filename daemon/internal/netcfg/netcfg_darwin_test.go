@@ -1,3 +1,5 @@
+//go:build darwin
+
 package netcfg
 
 import (
@@ -40,7 +42,7 @@ func TestRoutesAndUndo(t *testing.T) {
 	}
 	c.PinHost(netip.MustParseAddr("203.0.113.7"), gw)
 	c.RouteVia("utun5", netip.MustParsePrefix("0.0.0.0/0"))
-	c.Blackhole(netip.MustParsePrefix("::/0"))
+	c.Blackhole("utun5", netip.MustParsePrefix("::/0"))
 	r.calls = nil
 	c.Undo()
 	want := []string{
@@ -62,7 +64,7 @@ func TestRoutesAndUndo(t *testing.T) {
 func TestDNSOverrideRestoresOriginal(t *testing.T) {
 	r := &rec{}
 	c := New(r.run)
-	if err := c.OverrideDNS([]netip.Addr{netip.MustParseAddr("10.8.0.1")}); err != nil {
+	if err := c.OverrideDNS("utun5", []netip.Addr{netip.MustParseAddr("10.8.0.1")}); err != nil {
 		t.Fatal(err)
 	}
 	all := strings.Join(r.calls, "\n")
@@ -80,8 +82,9 @@ func TestDNSOverrideRestoresOriginal(t *testing.T) {
 func TestKillSwitch(t *testing.T) {
 	r := &rec{}
 	c := New(r.run)
-	rules := PFRules("utun5", []Allow{{Addr: netip.MustParseAddr("203.0.113.7"), Port: 51820, Proto: "udp"}}, false)
-	if err := c.KillSwitch(rules); err != nil {
+	allow := []Allow{{Addr: netip.MustParseAddr("203.0.113.7"), Port: 51820, Proto: "udp"}}
+	rules := PFRules("utun5", allow, false)
+	if err := c.KillSwitch("utun5", allow, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasSuffix(strings.TrimSpace(rules), "block drop quick all") || !strings.Contains(rules, "pass out quick inet proto udp to 203.0.113.7 port 51820") {

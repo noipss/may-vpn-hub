@@ -7,7 +7,10 @@ require (
 	github.com/sagernet/sing v0.9.7-0.20260929150544-0ad23b637bd4
 	github.com/sagernet/sing-box v1.14.3
 	golang.org/x/crypto v0.57.0
+	golang.org/x/sys v0.49.0
 	golang.zx2c4.com/wireguard v0.0.0-20261006164505-2631ce99a06f
+	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
+	golang.zx2c4.com/wireguard/windows v1.1.1
 )
 
 require (
@@ -73,6 +76,7 @@ require (
 	github.com/libp2p/go-nat v1.0.1-0.20250821073202-01afc089f138 // indirect
 	github.com/libp2p/go-netroute v0.2.1 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
+	github.com/mdlayher/genetlink v1.3.2 // indirect
 	github.com/mdlayher/netlink v1.11.2 // indirect
 	github.com/mdlayher/socket v0.6.0 // indirect
 	github.com/metacubex/utls v1.8.7 // indirect
@@ -172,13 +176,11 @@ require (
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
-	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/grpc v1.79.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect

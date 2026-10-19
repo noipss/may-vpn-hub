@@ -29,8 +29,8 @@ func StartWireGuard(tdev tun.Device, uapi []byte) (Tunnel, error) {
 	return &wgTunnel{dev: dev, name: name}, nil
 }
 
-// CreateUTUN opens the next free utun for wireguard-go.
-func CreateUTUN(mtu int) (tun.Device, error) { return tun.CreateTUN("utun", mtu) }
+// CreateTUN opens the tunnel interface for wireguard-go (utunN on macOS, TunName elsewhere).
+func CreateTUN(mtu int) (tun.Device, error) { return tun.CreateTUN(TunName, mtu) }
 
 func (t *wgTunnel) Name() string { return t.name }
 func (t *wgTunnel) Counters() (uint64, uint64, time.Time) {

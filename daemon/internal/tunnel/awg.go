@@ -30,7 +30,7 @@ func StartAmneziaWG(tdev tun.Device, uapi []byte) (Tunnel, error) {
 	return &awgTunnel{dev: dev, name: name}, nil
 }
 
-func CreateAWGUTUN(mtu int) (tun.Device, error) { return tun.CreateTUN("utun", mtu) }
+func CreateAWGTUN(mtu int) (tun.Device, error) { return tun.CreateTUN(TunName, mtu) }
 
 func (t *awgTunnel) Name() string { return t.name }
 func (t *awgTunnel) Counters() (uint64, uint64, time.Time) {

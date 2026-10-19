@@ -1,3 +1,5 @@
+//go:build !windows
+
 package server
 
 import (
@@ -9,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -67,18 +70,19 @@ func (cl *client) next(t *testing.T, match func(map[string]any) bool) map[string
 }
 
 func start(t *testing.T, uid int) (string, *fakeDriver) {
+	owner := strconv.Itoa(uid)
 	dir, _ := os.MkdirTemp("", "mv")
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	path := filepath.Join(dir, "s.sock")
 	d := &fakeDriver{}
 	sess := session.New(d, func(ctx context.Context) (time.Duration, error) { return 42 * time.Millisecond, nil })
 	sess.Tick = 50 * time.Millisecond
-	ln, err := Listen(path, uid)
+	ln, err := Listen(path, owner)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { ln.Close() })
-	go (&Server{Sess: sess, Version: "test", AllowUID: uid}).Serve(ln)
+	go (&Server{Sess: sess, Version: "test", Owner: owner}).Serve(ln)
 	return path, d
 }
 

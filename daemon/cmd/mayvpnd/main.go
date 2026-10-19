@@ -1,8 +1,8 @@
 // mayvpnd — May VPN's privileged helper. It never logs: errors go back over the socket only.
 //
-//	mayvpnd serve [--uid N] [--socket PATH]   run under launchd (root)
-//	mayvpnd install --uid N                    copy self into /Library and load the launchd job (root)
-//	mayvpnd uninstall                          stop the job and delete every file it owns (root)
+//	mayvpnd serve [--uid N | --sid SID] [--socket PATH]   run under launchd / systemd / Windows services
+//	mayvpnd install --uid N | --sid SID [--errfile F]     copy self into the system and start it (admin)
+//	mayvpnd uninstall [--errfile F]                       stop it and delete every file it owns (admin)
 //	mayvpnd parse < key                        print a key's summary as JSON (no secrets, no root)
 //	mayvpnd version
 package main
@@ -13,8 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
-	"syscall"
+	"strconv"
 
 	"mayvpn/internal/driver"
 	"mayvpn/internal/install"
@@ -37,10 +36,16 @@ func main() {
 	}
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	uid := fs.Int("uid", -1, "user allowed to talk to the helper")
-	sock := fs.String("socket", install.Socket, "socket path")
+	uid := fs.Int("uid", -1, "user allowed to talk to the helper (macOS, Linux)")
+	sid := fs.String("sid", "", "user allowed to talk to the helper (Windows)")
+	sock := fs.String("socket", install.Socket, "socket path / pipe name")
+	fs.StringVar(&errFile, "errfile", "", "write the error here too (elevated runs have no console)")
 	if err := fs.Parse(args); err != nil {
 		fail(err)
+	}
+	owner := *sid
+	if owner == "" && *uid >= 0 {
+		owner = strconv.Itoa(*uid)
 	}
 	switch cmd {
 	case "version":
@@ -54,7 +59,7 @@ func main() {
 		}
 		json.NewEncoder(os.Stdout).Encode(p.Summary())
 	case "install":
-		if err := install.Install(*uid); err != nil {
+		if err := install.Install(owner); err != nil {
 			fail(err)
 		}
 	case "uninstall":
@@ -62,33 +67,35 @@ func main() {
 			fail(err)
 		}
 	case "serve":
-		serve(*sock, *uid)
+		serve(*sock, owner)
 	default:
 		fail(fmt.Errorf("unknown command %q", cmd))
 	}
 }
 
-func serve(sock string, uid int) {
+func serve(sock, owner string) {
 	netcfg.Sweep(nil) // a previous run may have died with the kill switch loaded
-	sess := session.New(&driver.Darwin{}, session.HTTPProbe(ProbeURL))
-	ln, err := server.Listen(sock, uid)
+	sess := session.New(&driver.Driver{}, session.HTTPProbe(ProbeURL))
+	ln, err := server.Listen(sock, owner)
 	if err != nil {
 		os.Exit(1)
 	}
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
-	go func() {
-		<-sig
-		sess.Disconnect() // restores routes, DNS and pf before we go
+	go (&server.Server{Sess: sess, Version: Version, Owner: owner}).Serve(ln)
+	// signals, or the Windows service manager; cleanup runs before we report "stopped"
+	waitForStop(func() {
+		sess.Disconnect() // restores routes, DNS and the firewall before we go
 		ln.Close()
-		os.Remove(sock)
-		os.Exit(0)
-	}()
-	(&server.Server{Sess: sess, Version: Version, AllowUID: uid}).Serve(ln)
+		server.Cleanup(sock)
+	})
 }
+
+var errFile string
 
 // fail is for the interactive subcommands (install / uninstall / parse); serve stays silent.
 func fail(err error) {
 	fmt.Fprintln(os.Stderr, "mayvpnd:", err)
+	if errFile != "" {
+		os.WriteFile(errFile, []byte(err.Error()), 0o600)
+	}
 	os.Exit(1)
 }

@@ -1,23 +1,15 @@
 package install
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestPlist(t *testing.T) {
-	p := PlistFor(501)
-	f := filepath.Join(t.TempDir(), "x.plist")
-	os.WriteFile(f, []byte(p), 0o644)
-	if out, err := exec.Command("/usr/bin/plutil", "-lint", f).CombinedOutput(); err != nil {
-		t.Fatalf("%s", out)
-	}
-	for _, want := range []string{"<string>serve</string>", "<string>501</string>", "<key>StandardErrorPath</key><string>/dev/null</string>", Binary} {
-		if !strings.Contains(p, want) {
-			t.Fatalf("plist misses %s", want)
+func TestUnit(t *testing.T) {
+	u := UnitFor("/usr/local/lib/mayvpn/mayvpnd", "1000")
+	for _, want := range []string{"ExecStart=/usr/local/lib/mayvpn/mayvpnd serve --uid 1000", "StandardOutput=null", "StandardError=null", "Restart=always", "WantedBy=multi-user.target"} {
+		if !strings.Contains(u, want) {
+			t.Fatalf("unit misses %q:\n%s", want, u)
 		}
 	}
 }
