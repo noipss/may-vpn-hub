@@ -96,7 +96,9 @@ func TestLinks(t *testing.T) {
 				return x.Security == "reality" && x.RealityPub == "PUBKEY" && x.SNI == "www.microsoft.com" && x.Flow == "xtls-rprx-vision"
 			}},
 		{"vless://uuid@1.2.3.4:8443?type=ws&security=tls&path=%2Fws&host=cdn.example.com#x", VLESS, "1.2.3.4", 8443,
-			func(x *Proxy) bool { return x.Transport == "ws" && x.Path == "/ws" && x.HostHeader == "cdn.example.com" }},
+			func(x *Proxy) bool {
+				return x.Transport == "ws" && x.Path == "/ws" && x.HostHeader == "cdn.example.com"
+			}},
 		{"trojan://secret@vps.example.com:443?sni=vps.example.com#t", Trojan, "vps.example.com", 443,
 			func(x *Proxy) bool { return x.Password == "secret" && x.Security == "tls" }},
 		{"hysteria2://pw@vps.example.com:8443?obfs=salamander&obfs-password=oo&sni=a.b#h", Hysteria2, "vps.example.com", 8443,
@@ -105,7 +107,9 @@ func TestLinks(t *testing.T) {
 		{"ss://" + base64.RawURLEncoding.EncodeToString([]byte("chacha20-ietf-poly1305:pass")) + "@vps.example.com:8388#ss", Shadowsocks, "vps.example.com", 8388,
 			func(x *Proxy) bool { return x.Method == "chacha20-ietf-poly1305" && x.Password == "pass" }},
 		{"ss://2022-blake3-aes-128-gcm:YWJjZGVmZ2hpamtsbW5vcA%3D%3D@1.2.3.4:443", Shadowsocks, "1.2.3.4", 443,
-			func(x *Proxy) bool { return x.Method == "2022-blake3-aes-128-gcm" && x.Password == "YWJjZGVmZ2hpamtsbW5vcA==" }},
+			func(x *Proxy) bool {
+				return x.Method == "2022-blake3-aes-128-gcm" && x.Password == "YWJjZGVmZ2hpamtsbW5vcA=="
+			}},
 		{"ss://" + base64.StdEncoding.EncodeToString([]byte("aes-256-gcm:pw@5.6.7.8:1234")) + "#legacy", Shadowsocks, "5.6.7.8", 1234,
 			func(x *Proxy) bool { return x.Method == "aes-256-gcm" }},
 		{"vmess://" + base64.StdEncoding.EncodeToString([]byte(`{"v":"2","ps":"vm","add":"vps.example.com","port":"443","id":"uuid","aid":"0","net":"ws","path":"/v","host":"h.com","tls":"tls"}`)),
