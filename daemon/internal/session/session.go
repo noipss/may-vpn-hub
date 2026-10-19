@@ -199,7 +199,7 @@ func (s *Session) run(ctx context.Context, p *profile.Profile, prefs driver.Pref
 				}
 				s.mu.Unlock()
 			case time.Now().After(deadline):
-				endErr = errors.New("no answer through the tunnel — check the key and that the server is up")
+				endErr = errors.New("No answer through the tunnel — check the key and the server")
 				return
 			}
 		}

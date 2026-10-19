@@ -1,0 +1,173 @@
+[
+ {
+  "js": "window.__vpn.runPrints(1.15)"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "01_run"
+ },
+ {
+  "js": "window.__vpn.at('guard', 1.0, 'idle')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "02_guard"
+ },
+ {
+  "js": "window.__vpn.at('guard', 4.3, 'idle')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "03_guard_look"
+ },
+ {
+  "js": "window.__vpn.at('fight', 0.1, 'connecting')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "04_fight_0.1"
+ },
+ {
+  "js": "window.__vpn.at('fight', 0.3, 'connecting')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "04_fight_0.3"
+ },
+ {
+  "js": "window.__vpn.at('fight', 0.45, 'connecting')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "04_fight_0.45"
+ },
+ {
+  "js": "window.__vpn.at('fight', 0.75, 'connecting')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "04_fight_0.75"
+ },
+ {
+  "js": "window.__vpn.at('throw', 0.25, 'connected')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "05_throw_0.25"
+ },
+ {
+  "js": "window.__vpn.at('throw', 0.5, 'connected')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "05_throw_0.5"
+ },
+ {
+  "js": "window.__vpn.at('throw', 0.8, 'connected')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "05_throw_0.8"
+ },
+ {
+  "js": "window.__vpn.at('throw', 1.2, 'connected')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "05_throw_1.2"
+ },
+ {
+  "js": "window.__vpn.at('throw', 1.7, 'connected')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "05_throw_1.7"
+ },
+ {
+  "js": "window.__vpn.at('ball', 0.3, 'connected'); window.__vpn.stats({rx:1,tx:1,rxRate:310000,txRate:24000,ping:41})"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "06_ball_0.3"
+ },
+ {
+  "js": "window.__vpn.at('ball', 2.0, 'connected'); window.__vpn.stats({rx:1,tx:1,rxRate:310000,txRate:24000,ping:41})"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "06_ball_2.0"
+ },
+ {
+  "js": "window.__vpn.at('ball', 4.0, 'connected'); window.__vpn.stats({rx:1,tx:1,rxRate:310000,txRate:24000,ping:41})"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "06_ball_4.0"
+ },
+ {
+  "js": "window.__vpn.at('uncurl', 0.4, 'idle')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "07_uncurl_0.4"
+ },
+ {
+  "js": "window.__vpn.at('uncurl', 0.7, 'idle')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "07_uncurl_0.7"
+ },
+ {
+  "js": "window.__vpn.at('uncurl', 0.95, 'idle')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "07_uncurl_0.95"
+ },
+ {
+  "js": "window.__vpn.at('uncurl', 1.25, 'idle')"
+ },
+ {
+  "wait": 450
+ },
+ {
+  "shot": "07_uncurl_1.25"
+ }
+]

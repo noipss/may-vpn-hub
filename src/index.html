@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; img-src 'self' data:">
+  <title>May VPN</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="loading s-idle">
+  <div class="drag-strip"></div>
+  <canvas id="scene" aria-hidden="true"></canvas>
+
+  <div class="stage" id="stage">
+    <header class="top">
+      <span class="wordmark" data-pixel="MAY VPN" data-u="1" aria-label="May VPN"></span>
+      <button class="keys-btn" id="keysBtn" type="button" title="Keys &amp; settings (⌘K)">Keys</button>
+    </header>
+
+    <div class="prints" id="prints" aria-hidden="true"></div>
+    <p class="loader-cap" id="loaderCap">May May is on her way<span class="dots"></span></p>
+
+    <main class="main" id="main">
+      <button class="paw" id="paw" type="button" aria-label="Connect">
+        <svg class="paw-spin" id="pawSpin" viewBox="0 0 168 168" width="168" height="168" aria-hidden="true"></svg>
+        <svg class="paw-face" id="pawFace" viewBox="0 0 136 136" width="136" height="136" aria-hidden="true"></svg>
+      </button>
+
+      <div class="state-line">
+        <span class="state" id="stateText" role="status" aria-live="polite">Not protected</span>
+        <button class="chip" id="protoChip" type="button" title="Protocol"><i></i><span id="protoLabel">No key</span><b>▾</b></button>
+      </div>
+      <div class="menu" id="protoMenu" hidden></div>
+
+      <p class="toast" id="toast" role="alert" hidden></p>
+
+      <section class="stats" aria-label="Session">
+        <div class="stat"><span class="k">Region</span><span class="v" id="sRegion">—</span></div>
+        <div class="stat"><span class="k">Ping</span><span class="v" id="sPing">—</span></div>
+        <div class="stat"><span class="k">Speed</span><span class="v speed" id="sSpeed"><b>—</b></span></div>
+        <div class="stat"><span class="k">Session</span><span class="v" id="sTime">—</span></div>
+      </section>
+    </main>
+
+    <div class="scrim" id="scrim" hidden></div>
+
+    <section class="sheet" id="keysSheet" hidden aria-label="Keys and settings">
+      <header class="sheet-head">
+        <h2>Keys</h2>
+        <button class="x" type="button" data-close title="Close (Esc)">×</button>
+      </header>
+      <div class="sheet-body">
+        <label class="lbl" for="keyText">Paste a key from your VPS</label>
+        <textarea id="keyText" rows="4" spellcheck="false" autocomplete="off" placeholder="[Interface] … · vless:// · ss:// · trojan:// · hysteria2:// · .ovpn"></textarea>
+        <div class="row">
+          <button class="btn" id="importBtn" type="button">Import</button>
+          <button class="btn line" id="fileBtn" type="button">Choose file…</button>
+        </div>
+        <p class="note" id="importNote" hidden></p>
+
+        <div class="lbl">Protocols</div>
+        <ul class="protos" id="protoList"></ul>
+
+        <label class="lbl" for="region">Region</label>
+        <input id="region" type="text" maxlength="40" placeholder="e.g. Frankfurt · DE" autocomplete="off" spellcheck="false">
+
+        <div class="lbl">Protection</div>
+        <label class="toggle"><input type="checkbox" id="killSwitch"><span class="sw"></span><span>Kill switch<small>Block all traffic outside the tunnel</small></span></label>
+        <label class="toggle"><input type="checkbox" id="allowLan"><span class="sw"></span><span>Allow local network<small>Printers, NAS, AirPlay</small></span></label>
+
+        <div class="lbl">Guard post</div>
+        <div class="helper-row">
+          <span id="helperText">—</span>
+          <button class="btn line small" id="helperBtn" type="button">Install</button>
+        </div>
+
+        <button class="erase" id="eraseBtn" type="button">Erase everything</button>
+        <p class="fine">Nothing is logged. Only your key is kept on disk, encrypted with your Mac's keychain.</p>
+      </div>
+    </section>
+
+    <section class="sheet small" id="installSheet" hidden aria-label="Install helper">
+      <header class="sheet-head">
+        <h2>Guard post</h2>
+        <button class="x" type="button" data-close title="Close (Esc)">×</button>
+      </header>
+      <div class="sheet-body">
+        <p>To build a tunnel May May needs a small helper that runs as root. macOS will ask for your password once.</p>
+        <p class="fine">It writes no logs and keeps nothing on disk. “Erase everything” removes it.</p>
+        <div class="row">
+          <button class="btn" id="installBtn" type="button">Install helper</button>
+          <button class="btn line" type="button" data-close>Not now</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="heading.js"></script>
+  <script src="cat/shaders.js"></script>
+  <script src="cat/rig.js"></script>
+  <script src="cat/renderer.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

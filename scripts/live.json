@@ -1,0 +1,113 @@
+[
+ {
+  "js": "window.__vpn.live()"
+ },
+ {
+  "wait": 1100
+ },
+ {
+  "shot": "l01_loader"
+ },
+ {
+  "wait": 2200
+ },
+ {
+  "shot": "l02_guard"
+ },
+ {
+  "js": "document.getElementById('paw').click()"
+ },
+ {
+  "wait": 700
+ },
+ {
+  "shot": "l03_nokey_sheet"
+ },
+ {
+  "js": "document.getElementById('keyText').value='[Interface]\\nPrivateKey = AAAA\\nAddress = 10.8.0.2/32\\n[Peer]\\nPublicKey = BBBB\\nEndpoint = vps:51820\\nAllowedIPs = 0.0.0.0/0\\n'; document.getElementById('importBtn').click()"
+ },
+ {
+  "wait": 600
+ },
+ {
+  "shot": "l04_imported"
+ },
+ {
+  "js": "window.vpn.setPrefs({region:'Frankfurt \u00b7 DE'}); window.__vpn.close()"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "js": "document.getElementById('paw').click()"
+ },
+ {
+  "wait": 900
+ },
+ {
+  "shot": "l05_connecting"
+ },
+ {
+  "wait": 2600
+ },
+ {
+  "shot": "l06_throw"
+ },
+ {
+  "wait": 2600
+ },
+ {
+  "shot": "l07_ball"
+ },
+ {
+  "js": "document.getElementById('protoChip').click()"
+ },
+ {
+  "wait": 200
+ },
+ {
+  "shot": "l08_chip_disabled"
+ },
+ {
+  "js": "document.getElementById('paw').click()"
+ },
+ {
+  "wait": 900
+ },
+ {
+  "shot": "l09_uncurl"
+ },
+ {
+  "wait": 2200
+ },
+ {
+  "shot": "l10_back"
+ },
+ {
+  "js": "document.getElementById('protoChip').click()"
+ },
+ {
+  "wait": 250
+ },
+ {
+  "shot": "l11_menu"
+ },
+ {
+  "js": "document.body.click(); window.__vpn.open('installSheet')"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "shot": "l12_install"
+ },
+ {
+  "js": "window.__vpn.close(); window.__vpn.toast('no answer through the tunnel \u2014 check the key and that the server is up')"
+ },
+ {
+  "wait": 200
+ },
+ {
+  "shot": "l13_toast"
+ }
+]

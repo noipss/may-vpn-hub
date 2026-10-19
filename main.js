@@ -187,7 +187,10 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.loadFile(path.join(__dirname, 'src', 'index.html'), script ? { query: { capture: '1' } } : undefined);
-  if (script) runScript(win, JSON.parse(fs.readFileSync(script, 'utf8')));
+  if (script) {
+    win.webContents.on('console-message', (_e, _level, msg, line, src) => console.log('[renderer]', msg, `${path.basename(src)}:${line}`));
+    runScript(win, JSON.parse(fs.readFileSync(script, 'utf8'))).catch((e) => { console.error('script failed:', e.message); app.exit(1); });
+  }
   if (process.argv.includes('--fps')) {
     setTimeout(async () => {
       const a = await win.webContents.executeJavaScript('({...window.__fps()})');
