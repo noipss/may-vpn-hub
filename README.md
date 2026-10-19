@@ -9,7 +9,7 @@ Shadowsocks, Hysteria2 and OpenVPN run too.
 
 ```bash
 npm install
-npm start            # builds the Go helper (needs Go 1.26) and opens the app
+npm start            # builds the Go helper (Go 1.26+; it fetches the 1.27 toolchain itself) and opens the app
 npm run demo         # UI with a pretend helper — no root, no network changes
 npm test             # Go tests (incl. WireGuard/AmneziaWG loopback) + vault + helper protocol
 npm run shots        # frozen frames of every cat state → ./shots

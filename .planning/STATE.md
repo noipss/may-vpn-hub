@@ -8,3 +8,4 @@
 - Phase 6 — done: sword & shield SDFs (paw emblem, iron rim, fuller); poses: guard (twirls & inspects the sword every 7.5 s), fight loop, throw (weapons fly off on arcs), ball (floats, turns like a globe, tail flicks), uncurl (weapons drop from the sky into the paws); loader: trotting run with scanline paw prints. Verified: frozen frames of every state, live demo flow end-to-end, 60 fps (worst 18 ms).
 - Not verified: a live root connection to a real VPS (no VPS/key on this machine) and the osascript install prompt.
 - Phase 7 — done: real-mode check (no key → Keys sheet, helper "Not installed"), no files left in ~/Library or the temp dir after quit; single-instance lock + sweep of temp folders left by hard-killed runs; session tests (timeout teardown, disconnect while connecting) pass under -race.
+- Phase 8 — done: VPS audit & tuning, see phase-8-vps.md.

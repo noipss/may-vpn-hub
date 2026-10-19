@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 
 	"mayvpn/internal/netcfg"
 	"mayvpn/internal/profile"
@@ -48,6 +49,9 @@ func (d *Darwin) Resolve(ctx context.Context, host string) (netip.Addr, error) {
 
 // Start brings the tunnel up. The returned stop func undoes everything.
 func (d *Darwin) Start(ctx context.Context, p *profile.Profile, prefs Prefs) (tunnel.Tunnel, func(), error) {
+	if err := ForeignVPN(netcfg.New(d.Run)); err != nil {
+		return nil, nil, err
+	}
 	switch p.Kind {
 	case profile.WireGuard, profile.AmneziaWG:
 		return d.startWG(ctx, p, prefs)
@@ -158,6 +162,28 @@ func (d *Darwin) startWG(ctx context.Context, p *profile.Profile, prefs Prefs) (
 		}
 	}
 	return t, stop, nil
+}
+
+// ForeignVPN refuses to start inside another VPN: its tunnel owns the default route, so our
+// server would be reached through it and the kill switch would cut that VPN's own traffic.
+func ForeignVPN(nc *netcfg.Config) error {
+	gw, err := nc.DefaultGateway(false)
+	if err != nil {
+		return nil // no default route: the resolve / dial step reports that more clearly
+	}
+	if isTunnel(gw.Iface) {
+		return fmt.Errorf("another VPN is on (%s) — turn it off first, May VPN can't run inside it", gw.Iface)
+	}
+	return nil
+}
+
+func isTunnel(iface string) bool {
+	for _, p := range []string{"utun", "ipsec", "ppp", "tun", "tap", "wg"} {
+		if strings.HasPrefix(iface, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func covered(w *profile.WG, ip netip.Addr) bool {
