@@ -1,0 +1,7 @@
+node_modules/
+shots/
+dist/
+daemon/bin/
+scripts/linux-e2e/mayvpnd
+scripts/linux-e2e/tests/
+.DS_Store
