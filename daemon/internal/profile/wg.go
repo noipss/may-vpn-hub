@@ -10,11 +10,22 @@ import (
 
 type Key [32]byte
 
+// parseKey reads a 44-character base64 WireGuard key. Errors say what is wrong with it without
+// ever repeating the key itself.
 func parseKey(s string) (Key, error) {
 	var k Key
-	b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(s))
+	s = strings.TrimSpace(s)
+	switch {
+	case s == "":
+		return k, fmt.Errorf("the key is empty — it was not filled in when the config was printed")
+	case strings.HasPrefix(s, "$"):
+		return k, fmt.Errorf("the key is a shell variable name, not a key — the config was printed without it")
+	case len(s) != 44:
+		return k, fmt.Errorf("the key has %d characters, a WireGuard key has 44 ending with \"=\" — it got cut or wrapped while copying", len(s))
+	}
+	b, err := base64.StdEncoding.DecodeString(s)
 	if err != nil || len(b) != 32 {
-		return k, fmt.Errorf("bad key (want 32 bytes base64)")
+		return k, fmt.Errorf("the key has characters that are not base64 — copy it again")
 	}
 	copy(k[:], b)
 	return k, nil

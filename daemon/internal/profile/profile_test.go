@@ -72,6 +72,23 @@ func TestWireGuardFromTerminal(t *testing.T) {
 	}
 }
 
+func TestKeyErrorsExplainWithoutLeaking(t *testing.T) {
+	for in, want := range map[string]string{
+		"":            "empty",
+		"$PRIV":       "shell variable",
+		k1[:30]:       "has 30 characters",
+		k1[:43] + "!": "not base64",
+	} {
+		_, err := parseKey(in)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: got %v, want %q", in, err, want)
+		}
+		if in != "" && len(in) > 5 && strings.Contains(err.Error(), in[:8]) {
+			t.Errorf("error repeats the key: %v", err)
+		}
+	}
+}
+
 func TestAmneziaWG(t *testing.T) {
 	conf := "[Interface]\nPrivateKey=" + k1 + "\nAddress=10.0.0.2/32\nJc = 4\nJmin=40\nJmax=70\nS1=15\nS2=42\nH1=1\nH2=2\nH3=3\nH4=4\n[Peer]\nPublicKey=" + k2 + "\nEndpoint=1.2.3.4:443\nAllowedIPs=0.0.0.0/0\n"
 	p, err := Parse(conf)
