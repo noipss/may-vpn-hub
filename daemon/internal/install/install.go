@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -63,13 +64,35 @@ func Install(uid int) error {
 		return err
 	}
 	run("/bin/launchctl", "bootout", "system/"+Label) // fine if it was not loaded
+	os.Remove(Socket)                                 // so the wait below only sees the new helper
 	if err := copyFile(self, Binary, 0o755); err != nil {
 		return err
 	}
 	if err := writeFile(Plist, []byte(PlistFor(uid)), 0o644); err != nil {
 		return err
 	}
-	return run("/bin/launchctl", "bootstrap", "system", Plist)
+	if err := run("/bin/launchctl", "bootstrap", "system", Plist); err != nil {
+		// "Bootstrap failed: 5" usually means a half-loaded job: enable + kickstart instead
+		run("/bin/launchctl", "enable", "system/"+Label)
+		if err2 := run("/bin/launchctl", "kickstart", "-k", "system/"+Label); err2 != nil {
+			return fmt.Errorf("launchd would not start the helper: %v", err)
+		}
+	}
+	// installed is not the same as running: wait for the socket
+	for i := 0; i < 50; i++ {
+		if _, err := os.Stat(Socket); err == nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	out, _ := exec.Command("/bin/launchctl", "print", "system/"+Label).CombinedOutput()
+	state := "unknown"
+	for _, l := range strings.Split(string(out), "\n") {
+		if t := strings.TrimSpace(l); strings.HasPrefix(t, "state =") || strings.HasPrefix(t, "last exit code =") {
+			state = t
+		}
+	}
+	return fmt.Errorf("the helper was installed but did not start (%s)", state)
 }
 
 // Uninstall stops the job (which restores the network on SIGTERM) and deletes both files.

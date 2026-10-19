@@ -2,6 +2,8 @@
 // parses keys with the bundled binary (no root needed for that).
 const net = require('net');
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { execFile } = require('child_process');
 const { EventEmitter } = require('events');
 
@@ -127,19 +129,35 @@ class Helper extends EventEmitter {
       execFile('/usr/bin/osascript', ['-e', script], (err, _o, stderr) => {
         if (err) {
           if (/User canceled|-128/.test(stderr)) return reject(new Error('cancelled'));
-          return reject(new Error((stderr || err.message).trim()));
+          // osascript wraps the tool's own message: "execution error: mayvpnd: … (1)"
+          const msg = (stderr || err.message).trim().replace(/^.*execution error:\s*/s, '').replace(/\s*\(-?\d+\)$/, '');
+          return reject(new Error(msg));
         }
         resolve();
       });
     });
   }
 
-  install() {
-    const uid = process.getuid();
-    return this.admin(`${shq(this.bin)} install --uid ${uid}`);
+  // root may not run a binary that lives in ~/Documents (privacy protection), so the elevated
+  // step always runs a copy from a private temp folder, which it then copies into /Library.
+  async withStagedBinary(fn) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mayvpn-inst-'));
+    const bin = path.join(dir, 'mayvpnd');
+    try {
+      fs.copyFileSync(this.bin, bin);
+      fs.chmodSync(bin, 0o755);
+      return await fn(bin);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   }
 
-  uninstall() { return this.admin(`${shq(this.bin)} uninstall`); }
+  install() {
+    const uid = process.getuid();
+    return this.withStagedBinary((bin) => this.admin(`${shq(bin)} install --uid ${uid}`));
+  }
+
+  uninstall() { return this.withStagedBinary((bin) => this.admin(`${shq(bin)} uninstall`)); }
 }
 
 const shq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;

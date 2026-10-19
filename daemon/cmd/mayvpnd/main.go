@@ -24,7 +24,7 @@ import (
 	"mayvpn/internal/session"
 )
 
-const Version = "0.1.2"
+const Version = "0.1.3"
 
 // ProbeURL answers fast over plain HTTP from anywhere; we only time the round trip.
 const ProbeURL = "http://1.1.1.1/cdn-cgi/trace"
