@@ -6,6 +6,12 @@
   const renderer = window.CatRenderer(canvas, { pitch: 6.6 });
   const capture = new URLSearchParams(location.search).has('capture');
   const api = window.vpn;
+  document.body.classList.add(`os-${api.platform}`);
+  $('elevateText').textContent = {
+    darwin: 'macOS will ask for your password once.',
+    win32: 'Windows will ask for permission (UAC) once.',
+    linux: 'Your desktop will ask for your password once (polkit).',
+  }[api.platform] || 'Your system will ask for your password once.';
 
   // ---------- layout: 480x800 design space, scaled to fit ----------
   const DW = 480, DH = 800;

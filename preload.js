@@ -8,6 +8,7 @@ const listen = (channel) => (cb) => {
 const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 
 contextBridge.exposeInMainWorld('vpn', {
+  platform: process.platform,
   state: call('vpn:state'),
   connect: call('vpn:connect'),
   disconnect: call('vpn:disconnect'),

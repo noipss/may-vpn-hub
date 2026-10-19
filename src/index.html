@@ -74,7 +74,7 @@
         </div>
 
         <button class="erase" id="eraseBtn" type="button">Erase everything</button>
-        <p class="fine">Nothing is logged. Only your key is kept on disk, encrypted with your Mac's keychain.</p>
+        <p class="fine">Nothing is logged. Only your key is kept on disk, encrypted with your system keychain.</p>
       </div>
     </section>
 
@@ -84,7 +84,7 @@
         <button class="x" type="button" data-close title="Close (Esc)">×</button>
       </header>
       <div class="sheet-body">
-        <p>To build a tunnel May May needs a small helper that runs as root. macOS will ask for your password once.</p>
+        <p>To build a tunnel May May needs a small helper with administrator rights. <span id="elevateText">Your system will ask for your password once.</span></p>
         <p class="fine">It writes no logs and keeps nothing on disk. “Erase everything” removes it.</p>
         <div class="row">
           <button class="btn" id="installBtn" type="button">Install helper</button>

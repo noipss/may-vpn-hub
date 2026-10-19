@@ -28,7 +28,7 @@ class Vault {
   }
 
   save() {
-    if (!this.crypto.available()) throw new Error('Keychain encryption is not available — the key cannot be stored safely.');
+    if (!this.crypto.available()) throw new Error('No system keychain to encrypt the key with (on Linux: GNOME Keyring or KWallet) — it will not be stored unprotected.');
     fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });
     const tmp = this.file + '.tmp';
     fs.writeFileSync(tmp, this.crypto.encrypt(JSON.stringify(this.data)), { mode: 0o600 });

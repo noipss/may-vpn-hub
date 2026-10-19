@@ -46,12 +46,20 @@ process.on('exit', wipeScratch);
 
 const vaultFile = demo ? path.join(scratch, 'vault') : path.join(app.getPath('appData'), 'May VPN', 'vault');
 const vault = new Vault(vaultFile, {
-  available: () => safeStorage.isEncryptionAvailable(),
+  // Linux without a keyring (GNOME Keyring / KWallet) falls back to "basic_text" — a fixed
+  // password, i.e. no protection — so the key is not stored at all there.
+  available: () => safeStorage.isEncryptionAvailable() &&
+    !(process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text'),
   encrypt: (s) => safeStorage.encryptString(s),
   decrypt: (b) => safeStorage.decryptString(b),
 });
 
-const BIN = path.join(__dirname, 'daemon', 'bin', 'mayvpnd');
+// the helper for this OS/CPU: packaged next to the app's resources, or built into daemon/bin in dev
+const { EXE } = require('./electron/helper');
+const TARGET = `${{ darwin: 'mac', win32: 'win', linux: 'linux' }[process.platform]}-${process.arch}`;
+const BIN = app.isPackaged
+  ? path.join(process.resourcesPath, 'daemon', EXE)
+  : path.join(__dirname, 'daemon', 'bin', TARGET, EXE);
 const helper = demo ? new DemoHelper() : new Helper({ bin: BIN });
 
 let win = null;
@@ -165,7 +173,9 @@ ipcMain.handle('app:erase', async () => {
     if (helper.installed()) await helper.uninstall();
   } catch (e) { return { error: e.message }; }
   vault.erase();
-  if (!demo) {
+  // macOS keeps the vault's encryption key as a keychain item; Windows (DPAPI) and Linux
+  // (keyring) tie it to the user account and have nothing per-app to delete
+  if (!demo && process.platform === 'darwin') {
     await new Promise((r) => execFile('/usr/bin/security', ['delete-generic-password', '-s', `${app.getName()} Safe Storage`], () => r()));
   }
   pushState();
@@ -173,17 +183,24 @@ ipcMain.handle('app:erase', async () => {
 });
 
 // ---------- window ----------
+// macOS: inset traffic lights; Windows: hidden title bar with milk-coloured native buttons on
+// top; Linux: the desktop's own frame (window-control overlays differ too much between DEs).
+function chrome() {
+  if (process.platform === 'darwin') return { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 16 } };
+  if (process.platform === 'win32') return { titleBarStyle: 'hidden', titleBarOverlay: { color: '#F2EBDD', symbolColor: '#0B0906', height: 40 } };
+  return { autoHideMenuBar: true };
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: W,
     height: H,
-    minWidth: 380,
+    minWidth: process.platform === 'win32' ? 420 : 380,
     minHeight: 633,
     useContentSize: true,
     title: 'May VPN',
     backgroundColor: '#F2EBDD',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 16 },
+    ...chrome(),
     show: !offscreen,
     webPreferences: {
       contextIsolation: true,

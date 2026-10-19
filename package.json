@@ -6,15 +6,111 @@
   "main": "main.js",
   "private": true,
   "scripts": {
-    "build:daemon": "make -C daemon",
-    "start": "npm run build:daemon && env -u ELECTRON_RUN_AS_NODE electron .",
-    "demo": "env -u ELECTRON_RUN_AS_NODE electron . --demo",
-    "shots": "env -u ELECTRON_RUN_AS_NODE electron . --demo --script=scripts/shots.json --out=shots",
-    "test": "make -C daemon test && npm run build:daemon && node scripts/test-vault.js && node scripts/test-helper.js",
-    "shots:live": "env -u ELECTRON_RUN_AS_NODE electron . --demo --script=scripts/live.json --out=shots/live"
+    "build:daemon": "node scripts/build-daemon.js",
+    "start": "node scripts/build-daemon.js && node scripts/electron.js",
+    "demo": "node scripts/electron.js --demo",
+    "shots": "node scripts/electron.js --demo --script=scripts/shots.json --out=shots",
+    "shots:live": "node scripts/electron.js --demo --script=scripts/live.json --out=shots/live",
+    "test": "node scripts/test-go.js && node scripts/build-daemon.js && node scripts/test-vault.js && node scripts/test-helper.js",
+    "test:linux": "node scripts/linux-e2e.js",
+    "dist": "node scripts/dist.js"
   },
   "license": "ISC",
   "devDependencies": {
-    "electron": "33.4.11"
-  }
+    "electron": "33.4.11",
+    "electron-builder": "^26.15.3"
+  },
+  "author": {
+    "name": "May May",
+    "email": "maymay@example.invalid"
+  },
+  "homepage": "https://example.invalid/may-vpn",
+  "build": {
+    "appId": "com.maymay.vpn",
+    "productName": "May VPN",
+    "copyright": "May May",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "electron/**",
+      "src/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "daemon/bin/${os}-${arch}",
+        "to": "daemon",
+        "filter": [
+          "mayvpnd",
+          "mayvpnd.exe",
+          "wintun.dll"
+        ]
+      }
+    ],
+    "asar": true,
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.png"
+    },
+    "dmg": {
+      "title": "May VPN"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "include": "build/installer.nsh",
+      "shortcutName": "May VPN"
+    },
+    "linux": {
+      "target": [
+        "deb",
+        "AppImage"
+      ],
+      "category": "Network",
+      "icon": "build/icon.png",
+      "maintainer": "May May <maymay@example.invalid>",
+      "synopsis": "No-logs VPN client (WireGuard first)",
+      "syncDesktopName": true
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libgbm1",
+        "libasound2 | libasound2t64",
+        "iproute2",
+        "nftables",
+        "policykit-1 | polkitd"
+      ],
+      "recommends": [
+        "wireguard-tools"
+      ],
+      "afterRemove": "build/linux-after-remove.sh"
+    },
+    "appImage": {
+      "artifactName": "May-VPN-${version}-${arch}.AppImage"
+    }
+  },
+  "desktopName": "may-vpn.desktop"
 }

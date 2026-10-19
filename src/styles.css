@@ -98,6 +98,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
   transition: transform .18s steps(6);
 }
 .keys-btn:hover::after { transform: scaleX(1); }
+/* Windows draws its own min/max/close buttons over the top right corner */
+.os-win32 .keys-btn { right: auto; left: 20px; }
 
 /* ---------- loading ---------- */
 .prints { position: absolute; inset: 0; pointer-events: none; }

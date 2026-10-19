@@ -9,3 +9,7 @@
 - Not verified: a live root connection to a real VPS (no VPS/key on this machine) and the osascript install prompt.
 - Phase 7 — done: real-mode check (no key → Keys sheet, helper "Not installed"), no files left in ~/Library or the temp dir after quit; single-instance lock + sweep of temp folders left by hard-killed runs; session tests (timeout teardown, disconnect while connecting) pass under -race.
 - Phase 8 — done: VPS audit & tuning, see phase-8-vps.md.
+- Phase 9 — done: Windows & Linux (see phase-9-cross-platform.md). Helper builds for mac/win/linux × x64/arm64;
+  installers: dmg, NSIS exe, deb + AppImage. Verified: Linux end-to-end in Docker (kernel WG, routes, nft kill switch,
+  DNS fallback, byte-exact restore, SO_PEERCRED), the .deb installs/removes with apt and the app runs under Xvfb,
+  packaged macOS app finds its helper. Not verified live: Windows (no machine) — static: vet, cross-build, package contents.

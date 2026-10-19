@@ -1,5 +1,5 @@
-// Talks to mayvpnd over its unix socket (JSON lines), installs / removes the launchd helper, and
-// parses keys with the bundled binary (no root needed for that).
+// Talks to mayvpnd over its socket / named pipe (JSON lines), installs / removes the system helper
+// (launchd, systemd, Windows service) and parses keys with the bundled binary (no admin needed).
 const net = require('net');
 const fs = require('fs');
 const os = require('os');
@@ -8,8 +8,16 @@ const { execFile } = require('child_process');
 const { EventEmitter } = require('events');
 
 const LABEL = 'com.maymay.vpn.helper';
-const SOCKET = '/var/run/com.maymay.vpn.sock';
-const PLIST = `/Library/LaunchDaemons/${LABEL}.plist`;
+const WIN_DIR = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'MayVPN');
+// where each OS keeps the helper's endpoint and the file that says it is installed
+const PLATFORM = {
+  darwin: { socket: '/var/run/com.maymay.vpn.sock', marker: `/Library/LaunchDaemons/${LABEL}.plist` },
+  linux: { socket: '/run/mayvpn.sock', marker: '/etc/systemd/system/mayvpnd.service' },
+  win32: { socket: '\\\\.\\pipe\\mayvpn', marker: path.join(WIN_DIR, 'mayvpnd.exe') },
+}[process.platform] || {};
+const SOCKET = PLATFORM.socket;
+const PLIST = PLATFORM.marker;
+const EXE = process.platform === 'win32' ? 'mayvpnd.exe' : 'mayvpnd';
 
 class Helper extends EventEmitter {
   // bin: path to the bundled mayvpnd; socket: override for tests
@@ -105,7 +113,7 @@ class Helper extends EventEmitter {
   // ---------- bundled binary ----------
   run(args, input) {
     return new Promise((resolve, reject) => {
-      const p = execFile(this.bin, args, { timeout: 10000, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
+      const p = execFile(this.bin, args, { timeout: 10000, maxBuffer: 1 << 20, windowsHide: true }, (err, stdout, stderr) => {
         if (err && !stdout) return reject(new Error((stderr || err.message).trim()));
         resolve(stdout);
       });
@@ -122,8 +130,9 @@ class Helper extends EventEmitter {
 
   bundledVersion() { return this.run(['version']).then((s) => s.trim()).catch(() => null); }
 
-  // osascript shows the standard macOS password prompt; nothing else is elevated.
-  admin(cmd) {
+  // ---------- elevation, one way per OS ----------
+  // macOS: osascript shows the standard password prompt; nothing else is elevated.
+  osascript(cmd) {
     const script = `do shell script ${JSON.stringify(cmd)} with administrator privileges`;
     return new Promise((resolve, reject) => {
       execFile('/usr/bin/osascript', ['-e', script], (err, _o, stderr) => {
@@ -138,28 +147,79 @@ class Helper extends EventEmitter {
     });
   }
 
-  // root may not run a binary that lives in ~/Documents (privacy protection), so the elevated
-  // step always runs a copy from a private temp folder, which it then copies into /Library.
+  // Linux: pkexec asks through the desktop's polkit agent. 126 = dismissed, 127 = not authorized.
+  pkexec(bin, args) {
+    return new Promise((resolve, reject) => {
+      execFile('pkexec', [bin, ...args], (err, _o, stderr) => {
+        if (!err) return resolve();
+        if (err.code === 126) return reject(new Error('cancelled'));
+        if (err.code === 'ENOENT') return reject(new Error('pkexec is missing — install polkit (policykit-1) to set up the helper'));
+        if (err.code === 127 && !stderr.includes('mayvpnd:')) return reject(new Error('not authorized to install the helper'));
+        reject(new Error((stderr || err.message).trim().replace(/^mayvpnd:\s*/, '')));
+      });
+    });
+  }
+
+  // Windows: UAC via PowerShell's RunAs; the elevated process has no console, so it reports
+  // errors through a file we read back.
+  uac(bin, args) {
+    const errFile = path.join(os.tmpdir(), `mayvpn-err-${process.pid}-${Date.now()}.txt`);
+    const ps = (v) => `'${String(v).replace(/'/g, "''")}'`;
+    const list = [...args, '--errfile', errFile].map(ps).join(',');
+    const cmd = `$p = Start-Process -FilePath ${ps(bin)} -ArgumentList ${list} -Verb RunAs -WindowStyle Hidden -Wait -PassThru; exit $p.ExitCode`;
+    return new Promise((resolve, reject) => {
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', cmd], { windowsHide: true }, (err, _o, stderr) => {
+        let msg = '';
+        try { msg = fs.readFileSync(errFile, 'utf8').trim(); fs.rmSync(errFile, { force: true }); } catch (_) {}
+        if (!err) return resolve();
+        if (/cancel/i.test(stderr)) return reject(new Error('cancelled'));
+        reject(new Error(msg || (stderr || err.message).trim()));
+      });
+    });
+  }
+
+  // the current user's SID, which the Windows service lets through its pipe
+  sid() {
+    return new Promise((resolve, reject) => {
+      execFile('whoami', ['/user', '/fo', 'csv', '/nh'], { windowsHide: true }, (err, out) => {
+        const m = !err && out.match(/"(S-1-[0-9-]+)"/);
+        return m ? resolve(m[1]) : reject(new Error('could not read your Windows account SID'));
+      });
+    });
+  }
+
+  // root / SYSTEM must not run a binary out of a protected or user-mounted place (~/Documents on
+  // macOS, an AppImage's FUSE mount on Linux), so the elevated step always runs a private copy —
+  // which then copies itself (and wintun.dll on Windows) into the system location.
   async withStagedBinary(fn) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mayvpn-inst-'));
-    const bin = path.join(dir, 'mayvpnd');
+    const bin = path.join(dir, EXE);
     try {
       fs.copyFileSync(this.bin, bin);
       fs.chmodSync(bin, 0o755);
+      const dll = path.join(path.dirname(this.bin), 'wintun.dll');
+      if (process.platform === 'win32' && fs.existsSync(dll)) fs.copyFileSync(dll, path.join(dir, 'wintun.dll'));
       return await fn(bin);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }
 
-  install() {
-    const uid = process.getuid();
-    return this.withStagedBinary((bin) => this.admin(`${shq(bin)} install --uid ${uid}`));
+  elevate(bin, args) {
+    if (process.platform === 'darwin') return this.osascript([bin, ...args].map(shq).join(' '));
+    if (process.platform === 'linux') return this.pkexec(bin, args);
+    if (process.platform === 'win32') return this.uac(bin, args);
+    return Promise.reject(new Error(`${process.platform} is not supported`));
   }
 
-  uninstall() { return this.withStagedBinary((bin) => this.admin(`${shq(bin)} uninstall`)); }
+  async install() {
+    const owner = process.platform === 'win32' ? ['--sid', await this.sid()] : ['--uid', String(process.getuid())];
+    return this.withStagedBinary((bin) => this.elevate(bin, ['install', ...owner]));
+  }
+
+  uninstall() { return this.withStagedBinary((bin) => this.elevate(bin, ['uninstall'])); }
 }
 
 const shq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
-module.exports = { Helper, SOCKET, LABEL };
+module.exports = { Helper, SOCKET, LABEL, EXE };

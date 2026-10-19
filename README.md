@@ -1,6 +1,6 @@
 # May VPN
 
-A no-logs VPN client for macOS. May May — the scanline kitten from May Attacker — guards the
+A no-logs VPN client for macOS, Windows and Linux. May May — the scanline kitten from May Attacker — guards the
 door on a milky background: she stands with her sword and shield, fights while the tunnel comes
 up, throws both away once you are protected and curls into a ball that turns like a globe.
 
@@ -9,11 +9,27 @@ Shadowsocks, Hysteria2 and OpenVPN run too.
 
 ```bash
 npm install
-npm start            # builds the Go helper (Go 1.26+; it fetches the 1.27 toolchain itself) and opens the app
-npm run demo         # UI with a pretend helper — no root, no network changes
-npm test             # Go tests (incl. WireGuard/AmneziaWG loopback) + vault + helper protocol
+npm start            # builds the helper for this OS (Go 1.26+, fetches the 1.27 toolchain) and opens the app
+npm run demo         # UI with a pretend helper — no admin rights, no network changes
+npm test             # go vet for macOS/Linux/Windows + Go tests + vault + helper protocol
+npm run test:linux   # Docker: kernel WireGuard, routes, nftables kill switch, DNS, restore — end to end
+npm run dist         # installer for this OS; `node scripts/dist.js mac win linux --x64 --arm64` for all
 npm run shots        # frozen frames of every cat state → ./shots
 ```
+
+| | macOS | Windows | Linux |
+|---|---|---|---|
+| Installer | `.dmg` | NSIS `.exe` (per machine; uninstall removes the helper) | `.deb` (removal takes the helper out), AppImage |
+| Helper | launchd daemon | Windows service `MayVPN` | systemd unit `mayvpnd` |
+| Elevation | password prompt (osascript) | UAC | polkit (`pkexec`) |
+| IPC | unix socket, `LOCAL_PEERCRED` | named pipe, ACL: you + SYSTEM + Administrators | unix socket, `SO_PEERCRED` |
+| WireGuard | wireguard-go on utun | wireguard-go on Wintun | **kernel WireGuard** (wireguard-go if no module) |
+| Kill switch | pf anchor | WFP dynamic session | nftables table `inet mayvpn` |
+| DNS | dynamic-store override | per-adapter DNS + WFP blocks other DNS | systemd-resolved per link, else `/etc/resolv.conf` |
+| Key storage | Keychain | DPAPI | GNOME Keyring / KWallet (refuses to store without one) |
+
+Not verified live: Windows (builds, vets and packages here; no Windows machine to run it on).
+Unsigned builds: macOS Gatekeeper and Windows SmartScreen will warn until the app is code-signed.
 
 ## How it works
 

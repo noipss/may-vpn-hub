@@ -38,6 +38,6 @@ assert(broken.meta().error, 'unreadable vault is reported');
 
 back.erase();
 assert(!fs.existsSync(file) && !fs.existsSync(path.dirname(file)), 'erase leaves nothing');
-assert.throws(() => new Vault(file, { ...crypto, available: () => false }).put('x', { kind: 'vless' }), /Keychain/);
+assert.throws(() => new Vault(file, { ...crypto, available: () => false }).put('x', { kind: 'vless' }), /keychain/);
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('vault OK');

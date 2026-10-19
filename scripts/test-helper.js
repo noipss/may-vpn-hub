@@ -7,7 +7,9 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { Helper } = require('../electron/helper');
 
-const BIN = path.join(__dirname, '..', 'daemon', 'bin', 'mayvpnd');
+const { EXE } = require('../electron/helper');
+const TARGET = `${{ darwin: 'mac', win32: 'win', linux: 'linux' }[process.platform]}-${process.arch}`;
+const BIN = path.join(__dirname, '..', 'daemon', 'bin', TARGET, EXE);
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-'));
 const sock = path.join(dir, 's.sock');
 const d = spawn(BIN, ['serve', '--socket', sock, '--uid', String(process.getuid())], { stdio: ['ignore', 'pipe', 'pipe'] });
