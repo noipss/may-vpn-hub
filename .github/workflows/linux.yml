@@ -1,0 +1,71 @@
+# Linux packages: .deb + AppImage for x64 and arm64.
+# Runs on every push to main that touches the app, by hand (Actions → Linux → Run workflow),
+# and on tags v* — then the files are attached to a GitHub Release as well.
+name: Linux
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore: ['.planning/**', '**.md']
+
+permissions:
+  contents: write # only used to create the release on tags
+
+jobs:
+  test:
+    name: Tests + Linux end-to-end
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+          cache-dependency-path: daemon/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: go vet (macOS, Linux, Windows) + go test
+        run: node scripts/test-go.js
+      - name: End-to-end in Docker (kernel WireGuard, nftables, DNS, restore)
+        run: node scripts/linux-e2e.js
+
+  deb:
+    name: Build .deb + AppImage
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+          cache-dependency-path: daemon/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build helper + packages (x64, arm64)
+        run: node scripts/dist.js linux --x64 --arm64
+      - name: Checksums
+        run: cd dist && sha256sum *.deb *.AppImage > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: may-vpn-linux
+          path: |
+            dist/*.deb
+            dist/*.AppImage
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.deb
+            dist/*.AppImage
+            dist/SHA256SUMS
