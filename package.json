@@ -1,0 +1,19 @@
+{
+  "name": "may-vpn",
+  "productName": "May VPN",
+  "version": "0.1.0",
+  "description": "May VPN — no-logs VPN client for macOS (WireGuard first)",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "build:daemon": "make -C daemon",
+    "start": "npm run build:daemon && env -u ELECTRON_RUN_AS_NODE electron .",
+    "demo": "env -u ELECTRON_RUN_AS_NODE electron . --demo",
+    "shots": "env -u ELECTRON_RUN_AS_NODE electron . --demo --script=scripts/shots.json --out=shots",
+    "test": "make -C daemon test && npm run build:daemon && node scripts/test-vault.js && node scripts/test-helper.js"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "33.4.11"
+  }
+}
